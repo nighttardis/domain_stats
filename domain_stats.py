@@ -2,8 +2,6 @@
 #domain_stats.py by Mark Baggett
 #Twitter @MarkBaggett
 
-from __future__ import print_function
-
 import six
 if six.PY2:
     import BaseHTTPServer
@@ -33,6 +31,7 @@ except Exception as e:
     print(str(e))
     print("You need to install the Python whois module.  Install PIP (https://bootstrap.pypa.io/get-pip.py).  Then 'pip install python-whois' ")
     sys.exit(0)
+
 
 class domain_api(BaseHTTPServer.BaseHTTPRequestHandler):
     def do_GET(self):
@@ -143,6 +142,7 @@ class domain_api(BaseHTTPServer.BaseHTTPRequestHandler):
     def log_message(self, format, *args):
         return
 
+
 class ThreadedDomainStats(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer):
     def __init__(self, *args,**kwargs):
         self.cache = {}
@@ -177,6 +177,7 @@ class ThreadedDomainStats(SocketServer.ThreadingMixIn, BaseHTTPServer.HTTPServer
             self.timer = threading.Timer(self.args.garbage_cycle, self.clear_old_cache, args = ())
             self.timer.start()
 
+
 def preload_domains(domain_list, server, delay=0.1):
     server.safe_print("Now preloading %d domains from alexa in the whois cache." %(len(domain_list)))
     dcount = 0
@@ -202,6 +203,7 @@ def preload_domains(domain_list, server, delay=0.1):
         finally:
             server.cache_lock.release()
     server.safe_print("Domain Cache Fully Loaded")
+
 
 def main():
     parser=argparse.ArgumentParser()
@@ -268,6 +270,7 @@ def main():
     server.timer.cancel()    
     server.safe_print("Web API Disabled...")
     server.safe_print("Control-C hit: Exiting server.  Please wait..")
+
 
 if __name__=="__main__":
     main()
