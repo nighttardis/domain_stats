@@ -36,8 +36,12 @@ except Exception as e:
 
 class domain_api(BaseHTTPServer.BaseHTTPRequestHandler):
 
+    def json_converter(self, o):
+        if isinstance(o, datetime.datetime):
+            return o.isoformat()
+
     def send_json(self, message):
-        message = pformat(message).encode('utf-8')
+        message = json.dumps(message, default=self.json_converter).encode('utf-8')
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
         self.send_header('Content-Length', str(len(message)))
