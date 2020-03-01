@@ -37,6 +37,7 @@ except Exception as e:
 class domain_api(BaseHTTPServer.BaseHTTPRequestHandler):
 
     def send_json(self, message):
+        self.server.safe_print("sending json")
         message = json.dumps(message).encode('utf-8')
         self.send_response(200)
         self.send_header('Content-Type', 'application/json')
