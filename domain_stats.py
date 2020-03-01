@@ -24,6 +24,7 @@ import os
 import datetime
 import pickle
 from pprint import pformat
+import json
 
 try:
     import whois
@@ -34,10 +35,36 @@ except Exception as e:
 
 
 class domain_api(BaseHTTPServer.BaseHTTPRequestHandler):
-    def do_GET(self):
+
+    def send_json(self, message):
+        message = json.dumps(message).encode('utf-8')
         self.send_response(200)
-        self.send_header('Content-type','text/plain')
+        self.send_header('Content-Type', 'application/json')
+        self.send_header('Content-Length', str(len(message)))
         self.end_headers()
+        self.wfile.write(message)
+
+    def send_text(self, message):
+        message = message.encode('utf-8')
+        self.send_response(200)
+        self.send_header('Content-Type', 'text/plain')
+        self.send_header('Content-Length', str(len(message)))
+        self.end_headers()
+        self.wfile.write(message)
+
+    def api_help(self):
+        api_hlp = f'API Documentation\nhttp://{self.server.server_address[0]}:{self.server.server_address[1]}' \
+                  f'/cmd/tgt cmd = domain or alexa tgt = domain name'
+        self.send_text(api_hlp)
+
+    def handle_exception(self):
+        message = 'Unable to parse the url.'
+        self.send_text(message)
+
+    def do_GET(self):
+        #self.send_response(200)
+        #self.send_header('Content-type','text/plain')
+        #self.end_headers()
         if self.server.args.verbose: self.server.safe_print(self.path)
         (ignore, ignore, urlpath, urlparams, ignore) = urlparse.urlsplit(self.path)
         cmdstr = tgtstr = None
@@ -45,37 +72,33 @@ class domain_api(BaseHTTPServer.BaseHTTPRequestHandler):
             cmdstr = re.search(r"[\/](created|alexa|domain)[\/].*$", urlpath)
             tgtstr = re.search(r"[\/](created|alexa|domain)[\/](.*)$", urlpath)
             if not cmdstr or not tgtstr:
-                api_hlp = 'API Documentation\nhttp://%s:%s/cmd/tgt cmd = domain or alexa tgt = domain name' % (self.server.server_address[0], self.server.server_address[1])
-                self.wfile.write(api_hlp.encode("latin-1"))
+                self.api_help()
                 return
-            params = {}
-            params["cmd"] = cmdstr.group(1)
-            params["tgt"] = tgtstr.group(2)
+            params = {"cmd": cmdstr.group(1), "tgt": tgtstr.group(2)}
         else:
-            cmdstr=re.search("cmd=(?:domain|alexa|created)",urlparams)
+            cmdstr=re.search("cmd=(?:domain|alexa|created)", urlparams)
             tgtstr =  re.search("tgt=",urlparams)
             if not cmdstr or not tgtstr:
-                api_hlp = 'API Documentation\nhttp://%s:%s/cmd/tgt cmd = domain or alexa tgt = domain name' % (self.server.server_address[0], self.server.server_address[1])
-                self.wfile.write(api_hlp.encode("latin-1"))
+                self.api_help()
                 return
-            params={}
+            params = {}
             try:
                 for prm in urlparams.split("&"):
-                    key,value = prm.split("=")
-                    params[key]=value
-            except:
-                self.wfile.write('Unable to parse the url.'.encode('latin-1'))
+                    key, value = prm.split("=")
+                    params[key] = value
+            except Exception:
+                self.handle_exception()
                 return
         if params["cmd"] == "alexa":
             if self.server.args.verbose: self.server.safe_print ("Alexa Query:", params["tgt"])
             if not self.server.alexa:
                 if self.server.args.verbose: self.server.safe_print ("No Alexa data loaded. Restart program.")
-                self.wfile.write("Alexa not loaded on server. Restart server with -a or --alexa and file path.".encode("latin-1"))
+                self.send_text("Alexa not loaded on server. Restart server with -a or --alexa and file path.")
             else:
-                if self.server.args.verbose: self.server.safe_print ("Alexa queried for:%s" % (params['tgt']))              
-                self.wfile.write(str(self.server.alexa.get(params["tgt"],"0")).encode("latin-1"))
+                if self.server.args.verbose: self.server.safe_print ("Alexa queried for:%s" % (params['tgt']))
+                self.send_text(str(self.server.alexa.get(params["tgt"], "0")))
         elif params["cmd"] == "domain":
-            fields=[]
+            fields = []
             if "/" in params['tgt']:
                 fields = params['tgt'].split("/")
                 params['tgt'] = fields[-1]
@@ -84,8 +107,8 @@ class domain_api(BaseHTTPServer.BaseHTTPRequestHandler):
                 if self.server.args.verbose: self.server.safe_print("Found in cache!!")
                 domain_info = self.server.cache.get(params['tgt'])
                 #If whois told us it doesnt exist previously then return cached response.  Dont update time so this times out at cache interval.
-                if domain_info.get('status','NOT FOUND') == "NOT FOUND":
-                    self.wfile.write(str("No whois record for %s" % (params['tgt'])).encode("latin-1"))
+                if domain_info.get('status', 'NOT FOUND') == "NOT FOUND":
+                    self.send_text(str("No whois record for %s" % (params['tgt'])))
                     return 
                 #Update the time on the domain so frequently queried domains stay in cache.
                 domain_info["time"] = time.time()
@@ -100,17 +123,17 @@ class domain_api(BaseHTTPServer.BaseHTTPRequestHandler):
                     if self.server.args.verbose: self.server.safe_print ("Querying the web", params['tgt'])
                     domain_info = whois.whois(params['tgt'])
                     if not domain_info.get('creation_date'):
-                        self.wfile.write(str("No whois record for %s" % (params['tgt'])).encode("latin-1"))
+                        self.send_text(str("No whois record for %s" % (params['tgt'])))
                         return
                 except Exception as e:
                     print(e)
                     if "no match for" in str(e).lower():
-                        domain_info={'domain_name': params['tgt'], 'time': time.time(),'status':"NOT FOUND"}
+                        domain_info = {'domain_name': params['tgt'], 'time': time.time(), 'status' : "NOT FOUND"}
                     else:
-                        self.server.safe_print ("Error querying whois server: %s" % (str(e)))     
+                        self.server.safe_print("Error querying whois server: %s" % (str(e)))
                         return
                 #Put it in the cache
-                self.server.safe_print("Caching whois record %s" % (domain_info.get("domain_name","incomplete record")))
+                self.server.safe_print("Caching whois record %s" % (domain_info.get("domain_name", "incomplete record")))
                 domain_info["time"] = time.time()
                 if self.server.alexa:
                     domain_info['alexa'] = self.server.alexa.get(params["tgt"],"0")
@@ -120,12 +143,11 @@ class domain_api(BaseHTTPServer.BaseHTTPRequestHandler):
                 finally:
                     self.server.cache_lock.release()
             if not fields:
-                dinfo = pformat(domain_info)
-                self.wfile.write(dinfo.encode("latin-1"))
+                self.send_json(domain_info)
             else:
                 if self.server.args.verbose: self.server.safe_print("processing fields %s" % (fields))
-                if domain_info.get('status','') == "NOT FOUND":
-                    self.wfile.write(str("No whois record for %s" % (params['tgt'])).encode("latin-1"))
+                if domain_info.get('status', '') == "NOT FOUND":
+                    self.send_text(str("No whois record for %s" % (params['tgt'])))
                     return
                 for fld in fields:
                     #We only pull one value if multiple values exist unless the field name ends with an * or --all was on cli
@@ -133,10 +155,10 @@ class domain_api(BaseHTTPServer.BaseHTTPRequestHandler):
                     if fld.endswith("*"):
                         fld = fld[:-1]
                         retrieve_all = True
-                    fld_value = domain_info.get(fld,"no field named %s found" % (fld))
-                    if (not retrieve_all) and type(fld_value)==list:
+                    fld_value = domain_info.get(fld, "no field named %s found" % (fld))
+                    if (not retrieve_all) and type(fld_value) == list:
                         fld_value = fld_value[0]
-                    self.wfile.write(str(fld_value).encode("latin-1")+b"; ")              
+                    self.send_text(str(fld_value))
         return
 
     def log_message(self, format, *args):
